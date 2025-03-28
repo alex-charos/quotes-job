@@ -1,0 +1,51 @@
+version: "2.2"
+name: quotes-cluster
+services:
+  quotes_broker:
+    image: apache/kafka:latest
+    hostname: quotes_broker
+    container_name: quotes_broker
+    expose:
+      - '9092'
+      - '9093'
+    ports:
+      - '9092:9092'
+      - '9093:9093'
+    networks:
+      - quotes-cluster-network
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT'
+      KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://127.0.0.1:9093,PLAINTEXT_HOST://host.docker.internal:9092'
+      KAFKA_PROCESS_ROLES: 'broker,controller'
+      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@quotes_broker:29093'
+      KAFKA_LISTENERS: 'CONTROLLER://:29093,PLAINTEXT_HOST://:9092,PLAINTEXT://:9093'
+      KAFKA_INTER_BROKER_LISTENER_NAME: 'PLAINTEXT'
+      KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
+      CLUSTER_ID: 'test-cluster-id'
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_LOG_DIRS: '/tmp/kraft-combined-logs'
+
+  quote-broker-ui:
+    image: tchiotludo/akhq
+    container_name: quote-broker-ui
+    ports:
+      - "8082:8080"  # AKHQ Web UI
+    depends_on:
+      - quotes_broker
+    networks:
+      - quotes-cluster-network
+    environment:
+      AKHQ_CONFIGURATION: |
+        akhq:
+          connections:
+            source-cluster:
+              properties:
+                bootstrap.servers: "quotes_broker:9092"
+
+networks:
+  quotes-cluster-network:
+    driver: bridge
