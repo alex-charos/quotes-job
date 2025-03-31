@@ -23,21 +23,21 @@ import gr.charos.literature.dto.Quote;
 
 import org.apache.flink.formats.json.JsonDeserializationSchema;
 
+import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.connectors.kafka.FlinkKafkaConsumer;
-import org.apache.flink.streaming.connectors.kafka.FlinkKafkaProducer;
 
 import java.util.Optional;
 import java.util.Properties;
 
 public class DataStreamJob {
 
-	private static final String DEFAULT_SOURCE_BOOTSTRAP_SERVERS = "localhost:9092";
+	private static final String DEFAULT_SOURCE_BOOTSTRAP_SERVERS = "localhost:9093";
 	private static final String DEFAULT_SOURCE_TOPIC = "quotes-with-author-test2";
 
 	private static final String DEFAULT_SOURCE_GROUP_ID = "flink-authors-group-21";
 
-	private static final String DEFAULT_DESTINATION_BOOTSTRAP_SERVERS = "localhost:9092";
+	private static final String DEFAULT_DESTINATION_BOOTSTRAP_SERVERS = "localhost:9093";
 	private static final String DEFAULT_DESTINATION_TOPIC = "sentiment-analysis-results";
 
 	public static void main(String[] args) throws Exception {
@@ -55,9 +55,8 @@ public class DataStreamJob {
 
 		FlinkKafkaConsumer<Quote> kafkaConsumer = new FlinkKafkaConsumer<>(config.sourceTopic(),jsonFormat, kafkaProps);
 
+		DataStream<Quote> textStream = env.addSource(kafkaConsumer);
 
-		// Execute program, beginning computation.
-		env.execute("Author Quote Count Job");
 	}
 
 	private static Config getConfig(String[] args) {
