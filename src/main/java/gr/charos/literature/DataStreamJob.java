@@ -19,44 +19,71 @@
 package gr.charos.literature;
 
 
+import gr.charos.literature.dto.AuthorQuotesCount;
 import gr.charos.literature.dto.Quote;
 
+import gr.charos.literature.function.QuoteCountFunction;
 import org.apache.flink.formats.json.JsonDeserializationSchema;
 
+import org.apache.flink.formats.json.JsonSerializationSchema;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.api.windowing.assigners.TumblingProcessingTimeWindows;
 import org.apache.flink.streaming.connectors.kafka.FlinkKafkaConsumer;
+import org.apache.flink.streaming.connectors.kafka.FlinkKafkaProducer;
 
+import java.time.Duration;
 import java.util.Optional;
 import java.util.Properties;
 
 public class DataStreamJob {
 
 	private static final String DEFAULT_SOURCE_BOOTSTRAP_SERVERS = "localhost:9093";
-	private static final String DEFAULT_SOURCE_TOPIC = "quotes-with-author-test2";
+	private static final String DEFAULT_SOURCE_TOPIC = "authored-quotes";
 
-	private static final String DEFAULT_SOURCE_GROUP_ID = "flink-authors-group-21";
+	private static final String DEFAULT_SOURCE_GROUP_ID = "default-quote-group";
 
 	private static final String DEFAULT_DESTINATION_BOOTSTRAP_SERVERS = "localhost:9093";
-	private static final String DEFAULT_DESTINATION_TOPIC = "sentiment-analysis-results";
+	private static final String DEFAULT_DESTINATION_TOPIC = "authored-quote-counts";
 
 	public static void main(String[] args) throws Exception {
 
 		final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 
-		Properties kafkaProps = new Properties();
-
 		Config config = getConfig(args);
 
-		kafkaProps.setProperty("bootstrap.servers",config.sourceBootstrapServers());
-		kafkaProps.setProperty("group.id", config.sourceGroupId());
+		Properties sourceKafkaProps = new Properties();
+		sourceKafkaProps.setProperty("bootstrap.servers",config.sourceBootstrapServers());
+		sourceKafkaProps.setProperty("group.id", config.sourceGroupId());
 
-		JsonDeserializationSchema<Quote> jsonFormat=new JsonDeserializationSchema<>(Quote.class);
+		JsonDeserializationSchema<Quote> jsonFormat
+				= new JsonDeserializationSchema<>(Quote.class);
 
-		FlinkKafkaConsumer<Quote> kafkaConsumer = new FlinkKafkaConsumer<>(config.sourceTopic(),jsonFormat, kafkaProps);
+		FlinkKafkaConsumer<Quote> kafkaConsumer
+				= new FlinkKafkaConsumer<>(config.sourceTopic(), jsonFormat, sourceKafkaProps);
 
 		DataStream<Quote> textStream = env.addSource(kafkaConsumer);
 
+		DataStream<AuthorQuotesCount> authorQuotes = textStream
+				.keyBy(Quote::author)
+				.window(TumblingProcessingTimeWindows.of(Duration.ofSeconds(5)))
+				.process(new QuoteCountFunction());
+
+
+		JsonSerializationSchema<AuthorQuotesCount> jsonSerialization
+				= new JsonSerializationSchema<>();
+
+
+		Properties destKafkaProps = new Properties();
+		destKafkaProps.setProperty("bootstrap.servers",config.destinationBootstrapServers());
+
+		FlinkKafkaProducer<AuthorQuotesCount> kafkaProducer
+				= new FlinkKafkaProducer<>(config.destinationTopic(), jsonSerialization, destKafkaProps);
+
+
+		authorQuotes.addSink(kafkaProducer);
+
+		env.execute("Author Quote Count Job");
 	}
 
 	private static Config getConfig(String[] args) {
