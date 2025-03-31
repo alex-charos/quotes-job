@@ -28,6 +28,11 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_LOG_DIRS: '/tmp/kraft-combined-logs'
+    healthcheck:
+      test: [ "CMD-SHELL", "kafka-topics.sh --bootstrap-server kafka:9092 --list" ]
+      interval: 5s
+      timeout: 10s
+      retries: 5
 
   quote-broker-ui:
     image: tchiotludo/akhq
@@ -45,6 +50,26 @@ services:
             source-cluster:
               properties:
                 bootstrap.servers: "quotes_broker:9092"
+        
+
+  init-kafka:
+    image: confluentinc/cp-kafka:6.1.1
+    depends_on:
+      - quotes_broker
+    networks:
+      - quotes-cluster-network
+    entrypoint: [ '/bin/sh', '-c' ]
+    command: |
+      "
+      # blocks until kafka is reachable
+      kafka-topics --bootstrap-server quotes_broker:9092 --list
+      echo -e 'Creating kafka topics'
+      kafka-topics --bootstrap-server quotes_broker:9092 --create --if-not-exists --topic authored-quotes --replication-factor 1 --partitions 1
+      kafka-topics --bootstrap-server quotes_broker:9092 --create --if-not-exists --topic authored-quote-counts --replication-factor 1 --partitions 1
+
+      echo -e 'Successfully created the following topics:'
+      kafka-topics --bootstrap-server quotes_broker:9092 --list
+      "
 
 networks:
   quotes-cluster-network:
